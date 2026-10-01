@@ -7,3 +7,5 @@ __pycache__/
 *.FCStd
 *.FCBak
 *.FCStd1
+*.step
+*.dxf

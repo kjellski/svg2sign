@@ -53,8 +53,24 @@ def _rgb(hex_color):
     return tuple(int(h[i:i + 2], 16) / 255.0 for i in (0, 2, 4))
 
 
-def build(job):
-    messages = []
+def _export_step(doc, path, messages):
+    """All solid parts of a document, placed as they are, into one STEP file."""
+    objs = [o for o in doc.Objects if o.isDerivedFrom("Part::Feature") and o.Shape.Solids]
+    try:
+        if App.GuiUp:
+            import ImportGui  # keeps the colours
+            ImportGui.export(objs, path)
+        else:
+            import Import
+            Import.export(objs, path)
+        return True
+    except Exception as exc:
+        messages.append("warning: STEP export failed for %s: %s" % (os.path.basename(path), exc))
+        return False
+
+
+def build(job, result):
+    messages = result["messages"]
     T, D = job["thickness"], job["inset"]
 
     # --- 1. assembled sign --------------------------------------------------
@@ -99,6 +115,13 @@ def build(job):
     lay.save()
     messages.append("layout built: %d sheet(s)" % job["sheets"])
 
+    # --- 3. STEP export of both -----------------------------------------------
+    if job.get("step"):
+        for d, fcstd in ((doc, job["sign_file"]), (lay, job["layout_file"])):
+            path = os.path.splitext(fcstd)[0] + ".step"
+            if _export_step(d, path, messages):
+                result["step_files"].append(path)
+
     if App.GuiUp:
         import FreeCADGui as Gui
         for d, view in ((lay, "viewTop"), (doc, "viewIsometric")):
@@ -109,14 +132,13 @@ def build(job):
             except Exception:
                 pass
         App.setActiveDocument(doc.Name)
-    return messages
 
 
 def main():
     job = json.load(open(os.environ["SVG2SIGN_JOB"]))
-    result = {"ok": False, "messages": []}
+    result = {"ok": False, "messages": [], "step_files": []}
     try:
-        result["messages"] = build(job)
+        build(job, result)
         result["ok"] = True
     except Exception as exc:
         result["error"] = "%s\n%s" % (exc, traceback.format_exc())

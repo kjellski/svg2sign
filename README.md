@@ -7,17 +7,25 @@ stacked "outside in": whatever is painted on top of something else sits one
 layer higher. Each part gets a shallow pocket (inset) for the parts resting on
 it, so everything locates itself during glue-up.
 
-You get two FreeCAD files:
+You get two FreeCAD files, and each one again as STEP:
 
 | File | Contents |
 |---|---|
 | `<name>_sign.FCStd` | The assembled sign, coloured like the SVG, one group per layer. For looking at. |
 | `<name>_layout.FCStd` | A copy with every part laid flat, same side up, spaced out on sheets. For cutting. |
+| `<name>_sign.step`, `<name>_layout.step` | The same two, for Fusion 360 or any other CAD. One body per part, named like the part. |
+
+The STEP files contain the parts only: no layer groups and no sheet outline.
+They are large (tens of MB for a detailed logo) because every curve is a fine
+polyline; a coarser `--tolerance` shrinks them. Skip them with `--no-step`.
+
+With `--dxf` you also get `<name>_layout.dxf`, the flat layout as 2D outlines.
+See [Exports](#exports).
 
 ## Requirements
 
 - [FreeCAD](https://www.freecad.org/) 1.0 or newer
-- [uv](https://docs.astral.sh/uv/) (installs the Python dependencies `svgelements` and `shapely` on first run)
+- [uv](https://docs.astral.sh/uv/) (installs the Python dependencies `svgelements`, `shapely` and `ezdxf` on first run)
 
 FreeCAD is found automatically on `PATH` or in `/Applications/FreeCAD.app`.
 Anywhere else, pass `--freecad /path/to/FreeCAD`.
@@ -69,9 +77,31 @@ around 80 parts takes about a minute.
 | `--min-overlap` | 0.05 | Fraction of a shape that must lie on another shape to count as stacked on it |
 | `--out` | next to the SVG | Output directory |
 | `--name` | SVG file name | Base name of the output files |
+| `--no-step` | off | Do not export the STEP files |
+| `--dxf` | off | Also write the flat layout as 2D DXF |
 | `--headless` | off | Build with `freecadcmd`: no window, and no colours in the files |
 | `--freecad` | auto | Path to the FreeCAD executable |
 | `--yes` | off | Never prompt |
+
+## Exports
+
+**STEP** (default, `--no-step` to skip) - `<name>_sign.step` and
+`<name>_layout.step`. Solids with pockets, one body per part, named like the
+part, positioned as in the matching FreeCAD file. In Fusion 360: *File > Open >
+Open from my computer*. Colours are not carried over reliably.
+
+**DXF** (`--dxf`) - `<name>_layout.dxf`, millimetres, closed polylines, all
+sheets side by side as in the layout file. One layer per kind of cut:
+
+| Layer | Contents | Cut |
+|---|---|---|
+| `OUTLINE` | Outer contour of every part | Through, outside the line |
+| `HOLES` | Holes in parts | Through, inside the line |
+| `POCKET` | Pockets, including the islands left standing inside them | Inset depth, inside the line |
+| `SHEET` | Sheet outline | Reference only |
+
+Pockets that run off the edge of a part are drawn 1 mm past that edge so the
+cutter clears it. The DXF is written directly and does not need FreeCAD.
 
 ## Preparing the SVG
 
@@ -120,8 +150,8 @@ that box. Parts are only rotated in the sheet plane, never flipped.
 - There is no check against the cutter diameter. Pockets and holes narrower than
   the bit cannot be milled, and inside corners of pockets come out rounded while
   the matching part corners are sharp - round those by hand or use a smaller bit.
-- No toolpaths, tabs or DXF export. Use the FreeCAD CAM workbench on the layout
-  file.
+- No toolpaths or tabs. Use the FreeCAD CAM workbench on the layout file, or
+  take the layout STEP or DXF into Fusion 360 or your CAM of choice.
 - `fill-rule` is treated as even-odd.
 
 ## Files

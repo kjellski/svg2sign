@@ -1,7 +1,7 @@
 #!/usr/bin/env -S uv run --script
 # /// script
 # requires-python = ">=3.10"
-# dependencies = ["svgelements", "shapely>=2.0"]
+# dependencies = ["svgelements", "shapely>=2.0", "ezdxf"]
 # ///
 """svg2sign - turn a filled SVG into a stacked, CNC-cuttable sign in FreeCAD.
 
@@ -13,6 +13,8 @@ Pipeline:
      the play, so the pieces locate themselves during glue-up.
   4. FreeCAD builds <name>_sign.FCStd (assembled, to look at), then copies it to
      <name>_layout.FCStd and lays all parts flat, same side up, on sheets.
+  5. Both are exported as STEP (<name>_sign.step, <name>_layout.step).
+  6. With --dxf, the flat layout is also written as 2D DXF (<name>_layout.dxf).
 
 Run:  ./svg2sign.py            (interactive)
       ./svg2sign.py --svg logo.svg --width 1000 --height 1000 --thickness 12 \
@@ -68,6 +70,8 @@ def parse_args(argv=None):
     p.add_argument("--min-overlap", type=float, default=0.05, help="fraction of a shape that must lie on another to count as stacked (default 0.05)")
     p.add_argument("--out", type=Path, help="output directory (default: next to the SVG)")
     p.add_argument("--name", help="output base name (default: SVG file name)")
+    p.add_argument("--dxf", action="store_true", help="also write the flat layout as 2D DXF (layers OUTLINE, HOLES, POCKET, SHEET)")
+    p.add_argument("--no-step", action="store_true", help="skip the STEP export (for Fusion 360 and other CAD)")
     p.add_argument("--headless", action="store_true", help="build with freecadcmd (no window, no colours)")
     p.add_argument("--freecad", type=Path, help="path to the FreeCAD / freecadcmd executable")
     p.add_argument("--yes", action="store_true", help="never prompt; use defaults for anything not given")
@@ -294,7 +298,7 @@ def build_parts(shapes, a):
                 pockets = polygons(pocket.intersection(poly.buffer(1.0)), 0.5)
             parts.append({
                 "name": name, "level": s["level"], "color": s["color"], "poly": poly,
-                "rings": rings_of(poly), "pockets": [rings_of(p) for p in pockets],
+                "rings": rings_of(poly), "pockets": [rings_of(p) for p in pockets], "pocket_polys": pockets,
                 "z": s["level"] * (a.thickness - a.inset),
             })
     return parts
@@ -361,6 +365,38 @@ def layout(parts, a):
     return len(sheets)
 
 
+def write_dxf(parts, n_sheets, a, path):
+    """Flat layout as closed 2D polylines, one layer per kind of cut."""
+    import ezdxf
+
+    dxf = ezdxf.new("R2010")
+    dxf.units = ezdxf.units.MM
+    for layer, color in (("OUTLINE", 7), ("HOLES", 1), ("POCKET", 5), ("SHEET", 8)):
+        dxf.layers.add(layer, color=color)
+    msp = dxf.modelspace()
+
+    def placed(geom, lo):
+        return affinity.translate(affinity.rotate(geom, lo["angle"], origin=(0, 0)), lo["x"], lo["y"])
+
+    def add(ring, layer):
+        msp.add_lwpolyline(list(ring.coords)[:-1], close=True, dxfattribs={"layer": layer})
+
+    for i in range(n_sheets):
+        x0, w, h = i * (a.sheet_width + 100), a.sheet_width, a.sheet_height
+        msp.add_lwpolyline([(x0, 0), (x0 + w, 0), (x0 + w, h), (x0, h)], close=True, dxfattribs={"layer": "SHEET"})
+    for p in parts:
+        poly = placed(p["poly"], p["layout"])
+        add(poly.exterior, "OUTLINE")
+        for hole in poly.interiors:
+            add(hole, "HOLES")
+        for pocket in p["pocket_polys"]:
+            pocket = placed(pocket, p["layout"])
+            add(pocket.exterior, "POCKET")
+            for island in pocket.interiors:
+                add(island, "POCKET")
+    dxf.saveas(path)
+
+
 # --------------------------------------------------------------------------- #
 # FreeCAD
 # --------------------------------------------------------------------------- #
@@ -389,7 +425,8 @@ def run_freecad(job, a):
     exe = find_freecad(a)
     print(f"building in FreeCAD ({'headless' if a.headless else 'GUI'}) - pockets can take a few minutes ...")
     if a.headless:
-        subprocess.run([exe, str(BUILDER)], env=env, check=False)
+        subprocess.run([exe, str(BUILDER)], env=env, check=False,
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     else:
         subprocess.Popen([exe, str(BUILDER)], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         deadline = time.time() + 3600
@@ -431,16 +468,22 @@ def main(argv=None):
         "doc_name": "".join(c if c.isalnum() else "_" for c in name),
         "thickness": a.thickness, "inset": a.inset,
         "sheet_width": a.sheet_width, "sheet_height": a.sheet_height, "sheets": n_sheets,
-        "headless": a.headless,
+        "headless": a.headless, "step": not a.no_step,
         "parts": [{k: p[k] for k in ("name", "level", "color", "rings", "pockets", "z", "layout")} for p in parts],
     }
     result = run_freecad(job, a)
-    for msg in result.get("messages", []):
+    for msg in result.get("messages", []):  # includes export failures
         print(f"  {msg}")
     if not result.get("ok"):
         sys.exit(f"error: FreeCAD build failed: {result.get('error')}")
     print(f"sign:   {job['sign_file']}")
     print(f"layout: {job['layout_file']}")
+    for path in result.get("step_files", []):
+        print(f"step:   {path}")
+    if a.dxf:
+        dxf_file = out_dir / f"{name}_layout.dxf"
+        write_dxf(parts, n_sheets, a, dxf_file)
+        print(f"dxf:    {dxf_file}")
 
 
 if __name__ == "__main__":
