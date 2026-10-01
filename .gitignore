@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+.venv/
+.DS_Store
+
+# FreeCAD output and backups
+*.FCStd
+*.FCBak
+*.FCStd1
