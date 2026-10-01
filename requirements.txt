@@ -1,0 +1,4 @@
+# Same list as the script header in svg2sign.py - keep both in sync.
+svgelements
+shapely>=2.0
+ezdxf

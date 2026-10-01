@@ -25,10 +25,61 @@ See [Exports](#exports).
 ## Requirements
 
 - [FreeCAD](https://www.freecad.org/) 1.0 or newer
-- [uv](https://docs.astral.sh/uv/) (installs the Python dependencies `svgelements`, `shapely` and `ezdxf` on first run)
+- Python 3.10 or newer with `svgelements`, `shapely` (2.0+) and `ezdxf` -
+  [uv](https://docs.astral.sh/uv/) takes care of all of that for you
 
-FreeCAD is found automatically on `PATH` or in `/Applications/FreeCAD.app`.
-Anywhere else, pass `--freecad /path/to/FreeCAD`.
+Developed and tested on macOS. Nothing in it is macOS-specific, but Windows and
+Linux are untested.
+
+## Install
+
+Get the code:
+
+```bash
+git clone https://github.com/kjellski/svg2sign.git
+cd svg2sign
+```
+
+### With uv (recommended)
+
+Install [uv](https://docs.astral.sh/uv/getting-started/installation/); that is
+the whole setup. The script lists its own dependencies, and uv installs them -
+and a suitable Python if needed - the first time you run it:
+
+```bash
+./svg2sign.py --help
+```
+
+On Windows, or if the script is not executable:
+
+```bash
+uv run svg2sign.py --help
+```
+
+### With pip
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+python svg2sign.py --help
+```
+
+On Windows activate with `.venv\Scripts\activate`. Wherever this README says
+`./svg2sign.py`, use `python svg2sign.py` instead.
+
+### FreeCAD location
+
+FreeCAD is found automatically if `FreeCAD` / `freecadcmd` is on your `PATH`, or
+in `/Applications/FreeCAD.app` on macOS. Otherwise point to it with `--freecad`:
+
+| System | Typical path |
+|---|---|
+| macOS | `/Applications/FreeCAD.app/Contents/MacOS/FreeCAD` |
+| Windows | `C:\Program Files\FreeCAD 1.0\bin\FreeCAD.exe` |
+| Linux AppImage | the `.AppImage` file itself |
+
+With `--headless`, point to `freecadcmd` (`FreeCADCmd.exe` on Windows) instead.
 
 ## Usage
 
@@ -55,8 +106,6 @@ for the rest:
 ./svg2sign.py --svg logo.svg --width 1000 --height 1000 \
               --thickness 12 --inset 3 --play 0.2 --gap 10 --yes
 ```
-
-If the script is not executable, run it as `uv run svg2sign.py ...`.
 
 A FreeCAD window opens with both documents once the build is done. A sign with
 around 80 parts takes about a minute.
@@ -156,6 +205,13 @@ that box. Parts are only rotated in the sheet plane, never flipped.
 
 ## Files
 
+- `LICENSE` - coffee-ware.
+- `requirements.txt` - dependencies for pip users; mirrors the header in `svg2sign.py`.
 - `svg2sign.py` - prompts, SVG parsing, stacking, pockets and packing.
 - `freecad_build.py` - runs inside FreeCAD and builds the two documents. Started
   by `svg2sign.py`; not meant to be run by hand.
+
+## License
+
+[Coffee-ware](LICENSE): do whatever you want with it, keep the notice, and if we
+meet some day and you think it was worth it, buy me a coffee. No warranty.
